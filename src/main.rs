@@ -1,8 +1,17 @@
+use app_dirs::{AppDataType, AppInfo};
 use failure;
 use serde_derive::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;
 use toml;
+
+use std::fs::File;
+use std::io::{Read, Write};
+
+const APP_INFO: AppInfo = AppInfo {
+    name: env!("CARGO_PKG_NAME"),
+    author: env!("CARGO_PKG_AUTHORS"),
+};
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Backup {
@@ -22,6 +31,31 @@ struct Config {
     codez_path: PathBuf,
     secretz: Secretz,
     backup: Backup,
+}
+
+impl Config {
+    fn config_path() -> Result<PathBuf, failure::Error> {
+        Ok(app_dirs::app_dir(AppDataType::UserConfig, &APP_INFO, "")?.join("config.toml"))
+    }
+
+    fn load() -> Result<Config, failure::Error> {
+        let config = match File::open(&Self::config_path()?) {
+            Ok(mut file) => {
+                let mut toml = String::new();
+                file.read_to_string(&mut toml)?;
+                toml::from_str(&toml)?
+            }
+            Err(_) => Default::default(),
+        };
+        Ok(config)
+    }
+
+    fn save(&self) -> Result<(), failure::Error> {
+        let toml = toml::to_string(&self)?;
+        let mut file = File::create(&Self::config_path()?)?;
+        file.write_all(toml.as_bytes())?;
+        Ok(())
+    }
 }
 
 impl Default for Config {
@@ -64,9 +98,12 @@ enum Cli {
 #[derive(StructOpt, Debug)]
 enum ConfigSubcommands {
     #[structopt(name = "init")]
-    Init,
-    #[structopt(name = "show")]
-    Show,
+    /// write default config
+    Init {
+        /// overwrite existing config
+        #[structopt(short = "f", long = "force")]
+        force: bool,
+    },
 }
 
 fn main() -> Result<(), failure::Error> {
@@ -78,13 +115,16 @@ fn main() -> Result<(), failure::Error> {
             println!("will run backups");
         }
         Cli::Config { config } => match config {
-            ConfigSubcommands::Init => {
+            ConfigSubcommands::Init { force } => {
+                let path = Config::config_path()?;
+                if path.exists() && !force {
+                    return Err(failure::format_err!(
+                        "config file already exists, use --force to overwrite"
+                    ));
+                }
                 let config: Config = Default::default();
-                println!("{}", toml::to_string(&config)?);
-            }
-            ConfigSubcommands::Show => {
-                let config: Config = Default::default();
-                println!("{}", toml::to_string(&config)?);
+                config.save()?;
+                eprintln!("successfully written new config to {}", &path.display());
             }
         },
     }
