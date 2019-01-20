@@ -92,7 +92,10 @@ enum Cli {
     },
     #[structopt(name = "backup")]
     /// start a backup
-    Backup,
+    Backup {
+        #[structopt(subcommand)]
+        backup: BackupSubcommands,
+    },
 }
 
 #[derive(StructOpt, Debug)]
@@ -106,14 +109,35 @@ enum ConfigSubcommands {
     },
 }
 
+#[derive(StructOpt, Debug)]
+enum BackupSubcommands {
+    #[structopt(name = "init")]
+    /// init new repository
+    Init { force: bool },
+    #[structopt(name = "run")]
+    /// run backup job
+    Run,
+    #[structopt(name = "gc")]
+    /// forget & prune, according to retention policy
+    GC,
+}
+
 fn main() -> Result<(), failure::Error> {
     match Cli::from_args() {
         Cli::Adopt { file } => {
             println!("will adopt {}", &file.display());
         }
-        Cli::Backup => {
-            println!("will run backups");
-        }
+        Cli::Backup { backup } => match backup {
+            BackupSubcommands::Init { force } => {
+                println!("will init backup repo");
+            }
+            BackupSubcommands::Run => {
+                println!("will init backups");
+            }
+            BackupSubcommands::GC => {
+                println!("will init backups");
+            }
+        },
         Cli::Config { config } => match config {
             ConfigSubcommands::Init { force } => {
                 let path = Config::config_path()?;
