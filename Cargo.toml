@@ -1,0 +1,18 @@
+[package]
+name = "wk"
+version = "0.1.0"
+description = "immutable development environment management cli"
+license = "Apache-2.0/MIT"
+repository = "https://github.com/qmx/wk"
+homepage = "https://random.qmx.me"
+authors = ["Douglas Campos <qmx@qmx.me>"]
+edition = "2018"
+
+[dependencies]
+structopt = "0.2.14"
+app_dirs = "1.2.1"
+toml = "0.4.10"
+serde_derive = "1.0.85"
+serde = "1.0.85"
+failure = "0.1.5"
+duct = "0.11.1"
