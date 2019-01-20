@@ -1,6 +1,7 @@
 use failure;
 use serde_derive::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use structopt::StructOpt;
 use toml;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -43,8 +44,49 @@ impl Default for Config {
     }
 }
 
+#[derive(StructOpt, Debug)]
+enum Cli {
+    #[structopt(name = "adopt")]
+    /// adopt a file into secretz
+    Adopt { file: PathBuf },
+
+    #[structopt(name = "config")]
+    /// manage configuration
+    Config {
+        #[structopt(subcommand)]
+        config: ConfigSubcommands,
+    },
+    #[structopt(name = "backup")]
+    /// start a backup
+    Backup,
+}
+
+#[derive(StructOpt, Debug)]
+enum ConfigSubcommands {
+    #[structopt(name = "init")]
+    Init,
+    #[structopt(name = "show")]
+    Show,
+}
+
 fn main() -> Result<(), failure::Error> {
-    let config: Config = Default::default();
-    println!("{}", toml::to_string(&config)?);
+    match Cli::from_args() {
+        Cli::Adopt { file } => {
+            println!("will adopt {}", &file.display());
+        }
+        Cli::Backup => {
+            println!("will run backups");
+        }
+        Cli::Config { config } => match config {
+            ConfigSubcommands::Init => {
+                let config: Config = Default::default();
+                println!("{}", toml::to_string(&config)?);
+            }
+            ConfigSubcommands::Show => {
+                let config: Config = Default::default();
+                println!("{}", toml::to_string(&config)?);
+            }
+        },
+    }
     Ok(())
 }
