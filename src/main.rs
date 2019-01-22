@@ -1,11 +1,14 @@
 use app_dirs::{AppDataType, AppInfo};
+use directories;
 use failure;
+use pathdiff::diff_paths;
 use serde_derive::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;
 use toml;
+use whoami;
 
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{Read, Write};
 
 const APP_INFO: AppInfo = AppInfo {
@@ -24,6 +27,33 @@ struct Backup {
 #[derive(Debug, Deserialize, Serialize)]
 struct Secretz {
     path: PathBuf,
+}
+
+impl Secretz {
+    fn pack_dir(&self) -> PathBuf {
+        self.path.join(&whoami::username()).join("pack")
+    }
+
+    fn adopt(&self, path: PathBuf) -> Result<(), failure::Error> {
+        if path.is_dir() {
+            return Err(failure::format_err!("should not be a dir"));
+        }
+        if fs::symlink_metadata(&path)?.file_type().is_symlink() {
+            return Err(failure::format_err!("should not be a symlink"));
+        }
+        if let Some(basedirs) = directories::BaseDirs::new() {
+            if let Some(relpath) = diff_paths(&path, &basedirs.home_dir()) {
+                if let Some(parent) = &relpath.parent() {
+                    let target_dir = self.pack_dir().join(&parent);
+                    fs::create_dir_all(&target_dir)?;
+                    fs::copy(&path, &self.pack_dir().join(&relpath))?;
+                    fs::remove_file(&path)?
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -125,7 +155,9 @@ enum BackupSubcommands {
 fn main() -> Result<(), failure::Error> {
     match Cli::from_args() {
         Cli::Adopt { file } => {
-            println!("will adopt {}", &file.display());
+            let config = Config::load()?;
+            config.secretz.adopt(file)?;
+            println!("file adopted, now start a new shell");
         }
         Cli::Backup { backup } => match backup {
             BackupSubcommands::Init { force: _ } => {
