@@ -1,5 +1,6 @@
 use app_dirs::{AppDataType, AppInfo};
 use directories;
+use duct::cmd;
 use failure;
 use pathdiff::diff_paths;
 use serde_derive::{Deserialize, Serialize};
@@ -18,10 +19,10 @@ const APP_INFO: AppInfo = AppInfo {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Backup {
-    repository: PathBuf,
-    password_file: PathBuf,
+    repository: String,
+    password_file: String,
     excludes: Vec<String>,
-    targets: Vec<PathBuf>,
+    targets: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -92,13 +93,10 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             backup: Backup {
-                repository: Path::new("/mnt/backupz/wk").to_path_buf(),
-                password_file: Path::new("~/.config/.wk-bk.key").to_path_buf(),
+                repository: "/mnt/backupz/wk".to_string(),
+                password_file: "/home/qmx/.config/.wk-bk.key".to_string(),
                 excludes: vec!["target".to_string()],
-                targets: vec![
-                    Path::new("/mnt/codez").to_path_buf(),
-                    Path::new("/mnt/secretz").to_path_buf(),
-                ],
+                targets: vec!["/mnt/codez".to_string(), "/mnt/secretz".to_string()],
             },
             secretz: Secretz {
                 path: Path::new("/mnt/secretz").to_path_buf(),
@@ -147,9 +145,6 @@ enum BackupSubcommands {
     #[structopt(name = "run")]
     /// run backup job
     Run,
-    #[structopt(name = "gc")]
-    /// forget & prune, according to retention policy
-    GC,
 }
 
 fn main() -> Result<(), failure::Error> {
@@ -161,13 +156,33 @@ fn main() -> Result<(), failure::Error> {
         }
         Cli::Backup { backup } => match backup {
             BackupSubcommands::Init { force: _ } => {
-                println!("will init backup repo");
+                let config = Config::load()?;
+                cmd!(
+                    "restic",
+                    "-r",
+                    config.backup.repository,
+                    "-p",
+                    config.backup.password_file,
+                    "init"
+                )
+                .run()?;
             }
             BackupSubcommands::Run => {
-                println!("will init backups");
-            }
-            BackupSubcommands::GC => {
-                println!("will init backups");
+                let config = Config::load()?;
+                let mut args = vec![
+                    "-r".to_string(),
+                    config.backup.repository,
+                    "-p".to_string(),
+                    config.backup.password_file,
+                    "backup".to_string(),
+                ];
+                for exclude in config.backup.excludes {
+                    args.push(format!("--exclude={}", exclude));
+                }
+                for target in config.backup.targets {
+                    args.push(target);
+                }
+                cmd("restic", &args).run()?;
             }
         },
         Cli::Config { config } => match config {
