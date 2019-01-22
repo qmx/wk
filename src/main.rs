@@ -128,7 +128,7 @@ fn main() -> Result<(), failure::Error> {
             println!("will adopt {}", &file.display());
         }
         Cli::Backup { backup } => match backup {
-            BackupSubcommands::Init { force } => {
+            BackupSubcommands::Init { force: _ } => {
                 println!("will init backup repo");
             }
             BackupSubcommands::Run => {
