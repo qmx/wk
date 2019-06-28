@@ -19,10 +19,60 @@ const APP_INFO: AppInfo = AppInfo {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Backup {
-    repository: String,
     password_file: String,
     excludes: Vec<String>,
     targets: Vec<String>,
+    repository: Repository,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum Repository {
+    S3(S3Info),
+    Local(LocalPath),
+}
+
+impl Repository {
+    fn path(&self) -> String {
+        match self {
+            Repository::Local(path) => path.path.display().to_string(),
+            Repository::S3(s3) => s3.clone().url(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct LocalPath {
+    path: PathBuf,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct S3Info {
+    bucket: String,
+    endpoint: Option<String>,
+    access_key_id: String,
+    secret_access_key: String,
+}
+
+impl S3Info {
+    fn url(self) -> String {
+        format!(
+            "s3:{}/{}",
+            &self.endpoint.unwrap_or("s3.amazonaws.com".to_string()),
+            self.bucket
+        )
+    }
+}
+
+#[test]
+fn test_s3_url() {
+    let s3 = S3Info {
+        bucket: "foo".to_string(),
+        access_key_id: "baz".to_string(),
+        secret_access_key: "bar".to_string(),
+        endpoint: None,
+    };
+    assert_eq!("s3:s3.amazonaws.com/foo", s3.url());
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -59,7 +109,6 @@ impl Secretz {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Config {
-    codez_path: PathBuf,
     secretz: Secretz,
     backup: Backup,
 }
@@ -93,15 +142,16 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             backup: Backup {
-                repository: "/mnt/backupz/wk".to_string(),
                 password_file: "/home/qmx/.config/.wk-bk.key".to_string(),
                 excludes: vec!["target".to_string()],
                 targets: vec!["/mnt/codez".to_string(), "/mnt/secretz".to_string()],
+                repository: Repository::Local(LocalPath {
+                    path: Path::new("/mnt/backupz/wk").to_path_buf(),
+                }),
             },
             secretz: Secretz {
                 path: Path::new("/mnt/secretz").to_path_buf(),
             },
-            codez_path: Path::new("/mnt/codez").to_path_buf(),
         }
     }
 }
@@ -157,21 +207,26 @@ fn main() -> Result<(), failure::Error> {
         Cli::Backup { backup } => match backup {
             BackupSubcommands::Init { force: _ } => {
                 let config = Config::load()?;
-                cmd!(
+                let mut c = cmd!(
                     "restic",
                     "-r",
-                    config.backup.repository,
+                    config.backup.repository.path(),
                     "-p",
                     config.backup.password_file,
                     "init"
-                )
-                .run()?;
+                );
+                if let Repository::S3(s3) = config.backup.repository {
+                    c = c
+                        .env("AWS_ACCESS_KEY_ID", s3.access_key_id)
+                        .env("AWS_SECRET_ACCESS_KEY", s3.secret_access_key);
+                }
+                c.run()?;
             }
             BackupSubcommands::Run => {
                 let config = Config::load()?;
                 let mut args = vec![
                     "-r".to_string(),
-                    config.backup.repository,
+                    config.backup.repository.path(),
                     "-p".to_string(),
                     config.backup.password_file,
                     "backup".to_string(),
@@ -182,7 +237,13 @@ fn main() -> Result<(), failure::Error> {
                 for target in config.backup.targets {
                     args.push(target);
                 }
-                cmd("restic", &args).run()?;
+                let mut c = cmd("restic", &args);
+                if let Repository::S3(s3) = config.backup.repository {
+                    c = c
+                        .env("AWS_ACCESS_KEY_ID", s3.access_key_id)
+                        .env("AWS_SECRET_ACCESS_KEY", s3.secret_access_key);
+                }
+                c.run()?;
             }
         },
         Cli::Config { config } => match config {
