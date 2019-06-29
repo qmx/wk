@@ -199,17 +199,26 @@ enum BackupSubcommands {
     #[structopt(name = "snapshots")]
     /// list snapshots
     Snapshots,
+
+    #[structopt(name = "restore")]
+    /// restore backup
+    Restore {
+        #[structopt(short = "H", long = "host")]
+        /// host tag
+        host: String,
+
+        #[structopt(short = "t", long = "target")]
+        /// directory to restore the backup to (usually "/")
+        target: String,
+
+        /// the backup snapshot id, "latest" is accepted
+        snapshot_id: String,
+    },
 }
 
 fn restic(backup: &Backup, main_cmd: &str, extra_args: Vec<String>) -> duct::Expression {
     let path = &backup.repository.path();
-    let mut args = vec![
-        "-r",
-        path,
-        "-p",
-        &backup.password_file,
-        &main_cmd,
-    ];
+    let mut args = vec!["-r", path, "-p", &backup.password_file, &main_cmd];
     args.extend(extra_args.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
     let mut c = cmd("restic", &args);
     if let Repository::S3(s3) = &backup.repository {
@@ -246,6 +255,25 @@ fn main() -> Result<(), failure::Error> {
             BackupSubcommands::Snapshots => {
                 let config = Config::load()?;
                 restic(&config.backup, "snapshots", vec![]).run()?;
+            }
+            BackupSubcommands::Restore {
+                host,
+                target,
+                snapshot_id,
+            } => {
+                let config = Config::load()?;
+                restic(
+                    &config.backup,
+                    "restore",
+                    vec![
+                        "-H".to_string(),
+                        host,
+                        "--target".to_string(),
+                        target,
+                        snapshot_id,
+                    ],
+                )
+                .run()?;
             }
         },
         Cli::Config { config } => match config {
