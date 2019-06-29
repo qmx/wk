@@ -19,7 +19,7 @@ const APP_INFO: AppInfo = AppInfo {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Backup {
-    password_file: String,
+    password: String,
     excludes: Vec<String>,
     targets: Vec<String>,
     repository: Repository,
@@ -142,7 +142,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             backup: Backup {
-                password_file: "/home/qmx/.config/.wk-bk.key".to_string(),
+                password: "very_secure_password".to_string(),
                 excludes: vec!["target".to_string()],
                 targets: vec!["/mnt/codez".to_string(), "/mnt/secretz".to_string()],
                 repository: Repository::Local(LocalPath {
@@ -218,9 +218,9 @@ enum BackupSubcommands {
 
 fn restic(backup: &Backup, main_cmd: &str, extra_args: Vec<String>) -> duct::Expression {
     let path = &backup.repository.path();
-    let mut args = vec!["-r", path, "-p", &backup.password_file, &main_cmd];
+    let mut args = vec!["-r", path, &main_cmd];
     args.extend(extra_args.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
-    let mut c = cmd("restic", &args);
+    let mut c = cmd("restic", &args).env("RESTIC_PASSWORD", &backup.password);
     if let Repository::S3(s3) = &backup.repository {
         c = c
             .env("AWS_ACCESS_KEY_ID", &s3.access_key_id)
