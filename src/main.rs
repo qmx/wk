@@ -195,6 +195,29 @@ enum BackupSubcommands {
     #[structopt(name = "run")]
     /// run backup job
     Run,
+
+    #[structopt(name = "snapshots")]
+    /// list snapshots
+    Snapshots,
+}
+
+fn restic(backup: &Backup, main_cmd: &str, extra_args: Vec<String>) -> duct::Expression {
+    let path = &backup.repository.path();
+    let mut args = vec![
+        "-r",
+        path,
+        "-p",
+        &backup.password_file,
+        &main_cmd,
+    ];
+    args.extend(extra_args.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
+    let mut c = cmd("restic", &args);
+    if let Repository::S3(s3) = &backup.repository {
+        c = c
+            .env("AWS_ACCESS_KEY_ID", &s3.access_key_id)
+            .env("AWS_SECRET_ACCESS_KEY", &s3.secret_access_key);
+    }
+    c
 }
 
 fn main() -> Result<(), failure::Error> {
@@ -207,43 +230,22 @@ fn main() -> Result<(), failure::Error> {
         Cli::Backup { backup } => match backup {
             BackupSubcommands::Init { force: _ } => {
                 let config = Config::load()?;
-                let mut c = cmd!(
-                    "restic",
-                    "-r",
-                    config.backup.repository.path(),
-                    "-p",
-                    config.backup.password_file,
-                    "init"
-                );
-                if let Repository::S3(s3) = config.backup.repository {
-                    c = c
-                        .env("AWS_ACCESS_KEY_ID", s3.access_key_id)
-                        .env("AWS_SECRET_ACCESS_KEY", s3.secret_access_key);
-                }
-                c.run()?;
+                restic(&config.backup, "init", vec![]).run()?;
             }
             BackupSubcommands::Run => {
                 let config = Config::load()?;
-                let mut args = vec![
-                    "-r".to_string(),
-                    config.backup.repository.path(),
-                    "-p".to_string(),
-                    config.backup.password_file,
-                    "backup".to_string(),
-                ];
-                for exclude in config.backup.excludes {
-                    args.push(format!("--exclude={}", exclude));
+                let mut extra_args = vec![];
+                for exclude in &config.backup.excludes {
+                    extra_args.push(format!("--exclude={}", exclude));
                 }
-                for target in config.backup.targets {
-                    args.push(target);
+                for target in &config.backup.targets {
+                    extra_args.push(target.to_string());
                 }
-                let mut c = cmd("restic", &args);
-                if let Repository::S3(s3) = config.backup.repository {
-                    c = c
-                        .env("AWS_ACCESS_KEY_ID", s3.access_key_id)
-                        .env("AWS_SECRET_ACCESS_KEY", s3.secret_access_key);
-                }
-                c.run()?;
+                restic(&config.backup, "backup", extra_args).run()?;
+            }
+            BackupSubcommands::Snapshots => {
+                let config = Config::load()?;
+                restic(&config.backup, "snapshots", vec![]).run()?;
             }
         },
         Cli::Config { config } => match config {
