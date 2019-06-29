@@ -114,12 +114,12 @@ struct Config {
 }
 
 impl Config {
-    fn config_path() -> Result<PathBuf, failure::Error> {
+    fn default_config_path() -> Result<PathBuf, failure::Error> {
         Ok(app_dirs::app_dir(AppDataType::UserConfig, &APP_INFO, "")?.join("config.toml"))
     }
 
-    fn load() -> Result<Config, failure::Error> {
-        let config = match File::open(&Self::config_path()?) {
+    fn load_from_path(path: PathBuf) -> Result<Config, failure::Error> {
+        let config = match File::open(&path) {
             Ok(mut file) => {
                 let mut toml = String::new();
                 file.read_to_string(&mut toml)?;
@@ -130,9 +130,13 @@ impl Config {
         Ok(config)
     }
 
+    fn load() -> Result<Config, failure::Error> {
+        Self::load_from_path(Self::default_config_path()?)
+    }
+
     fn save(&self) -> Result<(), failure::Error> {
         let toml = toml::to_string(&self)?;
-        let mut file = File::create(&Self::config_path()?)?;
+        let mut file = File::create(&Self::default_config_path()?)?;
         file.write_all(toml.as_bytes())?;
         Ok(())
     }
@@ -211,6 +215,10 @@ enum BackupSubcommands {
         /// directory to restore the backup to (usually "/")
         target: String,
 
+        #[structopt(short = "f", long = "config")]
+        /// load config from an alternate path, useful for initial restores
+        alternate_config: Option<PathBuf>,
+
         /// the backup snapshot id, "latest" is accepted
         snapshot_id: String,
     },
@@ -262,8 +270,13 @@ fn main() -> Result<(), failure::Error> {
                 host,
                 target,
                 snapshot_id,
+                alternate_config,
             } => {
-                let config = Config::load()?;
+                let config = if let Some(alt) = alternate_config {
+                    Config::load_from_path(alt)?
+                } else {
+                    Config::load()?
+                };
                 restic(
                     &config.backup,
                     "restore",
@@ -280,7 +293,7 @@ fn main() -> Result<(), failure::Error> {
         },
         Cli::Config { config } => match config {
             ConfigSubcommands::Init { force } => {
-                let path = Config::config_path()?;
+                let path = Config::default_config_path()?;
                 if path.exists() && !force {
                     return Err(failure::format_err!(
                         "config file already exists, use --force to overwrite"
