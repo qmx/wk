@@ -218,9 +218,11 @@ enum BackupSubcommands {
 
 fn restic(backup: &Backup, main_cmd: &str, extra_args: Vec<String>) -> duct::Expression {
     let path = &backup.repository.path();
-    let mut args = vec!["-r", path, &main_cmd];
+    let mut args = vec![main_cmd];
     args.extend(extra_args.iter().map(|s| s.as_str()).collect::<Vec<&str>>());
-    let mut c = cmd("restic", &args).env("RESTIC_PASSWORD", &backup.password);
+    let mut c = cmd("restic", &args)
+        .env("RESTIC_REPOSITORY", path)
+        .env("RESTIC_PASSWORD", &backup.password);
     if let Repository::S3(s3) = &backup.repository {
         c = c
             .env("AWS_ACCESS_KEY_ID", &s3.access_key_id)
