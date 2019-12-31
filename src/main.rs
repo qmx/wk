@@ -1,7 +1,7 @@
+use anyhow::{self, format_err};
 use app_dirs::{AppDataType, AppInfo};
 use directories;
 use duct::cmd;
-use failure;
 use pathdiff::diff_paths;
 use serde_derive::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -85,12 +85,12 @@ impl Secretz {
         self.path.join(&whoami::username()).join("pack")
     }
 
-    fn adopt(&self, path: PathBuf) -> Result<(), failure::Error> {
+    fn adopt(&self, path: PathBuf) -> Result<(), anyhow::Error> {
         if path.is_dir() {
-            return Err(failure::format_err!("should not be a dir"));
+            return Err(format_err!("should not be a dir"));
         }
         if fs::symlink_metadata(&path)?.file_type().is_symlink() {
-            return Err(failure::format_err!("should not be a symlink"));
+            return Err(format_err!("should not be a symlink"));
         }
         if let Some(basedirs) = directories::BaseDirs::new() {
             if let Some(relpath) = diff_paths(&path, &basedirs.home_dir()) {
@@ -114,11 +114,11 @@ struct Config {
 }
 
 impl Config {
-    fn default_config_path() -> Result<PathBuf, failure::Error> {
+    fn default_config_path() -> Result<PathBuf, anyhow::Error> {
         Ok(app_dirs::app_dir(AppDataType::UserConfig, &APP_INFO, "")?.join("config.toml"))
     }
 
-    fn load_from_path(path: PathBuf) -> Result<Config, failure::Error> {
+    fn load_from_path(path: PathBuf) -> Result<Config, anyhow::Error> {
         let config = match File::open(&path) {
             Ok(mut file) => {
                 let mut toml = String::new();
@@ -130,11 +130,11 @@ impl Config {
         Ok(config)
     }
 
-    fn load() -> Result<Config, failure::Error> {
+    fn load() -> Result<Config, anyhow::Error> {
         Self::load_from_path(Self::default_config_path()?)
     }
 
-    fn save(&self) -> Result<(), failure::Error> {
+    fn save(&self) -> Result<(), anyhow::Error> {
         let toml = toml::to_string(&self)?;
         let mut file = File::create(&Self::default_config_path()?)?;
         file.write_all(toml.as_bytes())?;
@@ -239,7 +239,7 @@ fn restic(backup: &Backup, main_cmd: &str, extra_args: Vec<String>) -> duct::Exp
     c
 }
 
-fn main() -> Result<(), failure::Error> {
+fn main() -> Result<(), anyhow::Error> {
     match Cli::from_args() {
         Cli::Adopt { file } => {
             let config = Config::load()?;
@@ -295,7 +295,7 @@ fn main() -> Result<(), failure::Error> {
             ConfigSubcommands::Init { force } => {
                 let path = Config::default_config_path()?;
                 if path.exists() && !force {
-                    return Err(failure::format_err!(
+                    return Err(format_err!(
                         "config file already exists, use --force to overwrite"
                     ));
                 }
