@@ -52,6 +52,19 @@ struct S3Info {
     endpoint: Option<String>,
     access_key_id: String,
     secret_access_key: String,
+    region: String,
+}
+
+impl Default for S3Info {
+    fn default() -> Self {
+        Self {
+            bucket: "my_bucket".into(),
+            endpoint: Some("https://my-s3-endpoint.net".into()),
+            access_key_id: "access_key_id".into(),
+            secret_access_key: "secret_access_key".into(),
+            region: "us-east-1".into(),
+        }
+    }
 }
 
 impl S3Info {
@@ -188,6 +201,10 @@ enum ConfigSubcommands {
         /// overwrite existing config
         #[structopt(short = "f", long = "force")]
         force: bool,
+
+        /// add remote storage sample
+        #[structopt(short = "r", long = "remote")]
+        remote_storage: bool,
     },
 }
 
@@ -233,6 +250,7 @@ fn restic(backup: &Backup, main_cmd: &str, extra_args: Vec<String>) -> duct::Exp
         .env("RESTIC_PASSWORD", &backup.password);
     if let Repository::S3(s3) = &backup.repository {
         c = c
+            .env("AWS_DEFAULT_REGION", &s3.region)
             .env("AWS_ACCESS_KEY_ID", &s3.access_key_id)
             .env("AWS_SECRET_ACCESS_KEY", &s3.secret_access_key);
     }
@@ -292,14 +310,20 @@ fn main() -> Result<(), anyhow::Error> {
             }
         },
         Cli::Config { config } => match config {
-            ConfigSubcommands::Init { force } => {
+            ConfigSubcommands::Init {
+                force,
+                remote_storage,
+            } => {
                 let path = Config::default_config_path()?;
                 if path.exists() && !force {
                     return Err(format_err!(
                         "config file already exists, use --force to overwrite"
                     ));
                 }
-                let config: Config = Default::default();
+                let mut config: Config = Default::default();
+                if remote_storage {
+                    config.backup.repository = Repository::S3(S3Info::default());
+                }
                 config.save()?;
                 eprintln!("successfully written new config to {}", &path.display());
             }
