@@ -84,6 +84,7 @@ fn test_s3_url() {
         access_key_id: "baz".to_string(),
         secret_access_key: "bar".to_string(),
         endpoint: None,
+        region: "us-nowhere-1".to_string(),
     };
     assert_eq!("s3:s3.amazonaws.com/foo", s3.url());
 }
