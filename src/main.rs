@@ -100,20 +100,25 @@ impl Secretz {
     }
 
     fn adopt(&self, path: PathBuf) -> Result<(), anyhow::Error> {
-        if path.is_dir() {
+        let canonicalized = fs::canonicalize(path).context("could not canonicalize path")?;
+        if canonicalized.is_dir() {
             return Err(format_err!("should not be a dir"));
         }
-        if fs::symlink_metadata(&path)?.file_type().is_symlink() {
+        if fs::symlink_metadata(&canonicalized)?
+            .file_type()
+            .is_symlink()
+        {
             return Err(format_err!("should not be a symlink"));
         }
 
         if let Some(basedirs) = directories::BaseDirs::new() {
-            if let Some(relpath) = diff_paths(&path, &basedirs.home_dir()) {
+            if let Some(relpath) = diff_paths(&canonicalized, &basedirs.home_dir()) {
                 if let Some(parent) = &relpath.parent() {
                     let target_dir = self.pack_dir().join(&parent);
                     fs::create_dir_all(&target_dir).context("could not create dirs")?;
-                    fs::copy(&path, &self.pack_dir().join(&relpath)).context("could not copy")?;
-                    fs::remove_file(&path).context("could not remove file")?
+                    fs::copy(&canonicalized, &self.pack_dir().join(&relpath))
+                        .context("could not copy")?;
+                    fs::remove_file(&canonicalized).context("could not remove file")?
                 } else {
                     return Err(format_err!("could not find the parent dir"));
                 }
