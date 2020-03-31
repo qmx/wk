@@ -1,4 +1,4 @@
-use anyhow::{self, format_err};
+use anyhow::{self, format_err, Context};
 use app_dirs::{AppDataType, AppInfo};
 use directories;
 use duct::cmd;
@@ -106,15 +106,22 @@ impl Secretz {
         if fs::symlink_metadata(&path)?.file_type().is_symlink() {
             return Err(format_err!("should not be a symlink"));
         }
+
         if let Some(basedirs) = directories::BaseDirs::new() {
             if let Some(relpath) = diff_paths(&path, &basedirs.home_dir()) {
                 if let Some(parent) = &relpath.parent() {
                     let target_dir = self.pack_dir().join(&parent);
-                    fs::create_dir_all(&target_dir)?;
-                    fs::copy(&path, &self.pack_dir().join(&relpath))?;
-                    fs::remove_file(&path)?
+                    fs::create_dir_all(&target_dir).context("could not create dirs")?;
+                    fs::copy(&path, &self.pack_dir().join(&relpath)).context("could not copy")?;
+                    fs::remove_file(&path).context("could not remove file")?
+                } else {
+                    return Err(format_err!("could not find the parent dir"));
                 }
+            } else {
+                return Err(format_err!("could not diff paths"));
             }
+        } else {
+            return Err(format_err!("could not find basedirs information"));
         }
 
         Ok(())
